@@ -14,33 +14,11 @@
 <script type="text/javascript" src="http://ajax.googleapis.com/ajax/libs/jquery/1.4.2/jquery.min.js"></script>
 <script type="text/javascript" src="http://ajax.googleapis.com/ajax/libs/jqueryui/1.8.2/jquery-ui.min.js"></script>
 <script type="text/javascript" src="http://jqueryui.com/themeroller/themeswitchertool/"></script>
+<script type="text/javascript" src="ui.js"></script>
 <script type="text/javascript" src="../jquery.richtext.js"></script>
 
 <script type="text/javascript">
 $(function() {
-
-   $('#switcher').themeswitcher();
-
-	function showTab(tabName) {
-		var scrollVal = $(document).scrollTop();
-
-		$('.tab-pane').addClass('tabHidden');
-		$('#'+tabName).removeClass('tabHidden');
-
-		$('#menu a').removeClass('selected');
-		$('#menu a[href="#'+tabName+'"]').addClass('selected');
-
-		setTimeout(function() { $(document).scrollTop(scrollVal); }, 0);
-	}
-
-	
-	var anchorSep = document.location.href.indexOf('#');
-	showTab( 0 <= anchorSep ? document.location.href.substr(anchorSep+1) : 'home' );
-
-	$('a.tab').click(function(e) {
-		showTab( $(this).attr('href').substr(1) );
-		e.stopPropagation();
-	});
 
 	$('#textcontainer').richtext({
 		'sandboxed': true,
@@ -167,6 +145,14 @@ $(function() {
 			<div id="changelog" class="post tab-pane">
 				<h2>Changelog</h2>
 
+				<p>
+					<h3>2011-07-12 - version 0.5</h3>
+					<ul>
+						<li>simplified the toolbar declaration to keep it simple. More advanced toolbars can be designed through plugins and external elements</li>
+						<li>code cleanup and reorganisation; everything is well separated and clearer</li>
+						<li>next step should include toolbar button updates when editor state changes</li>
+					</ul>
+				</p>
 				<p>
 					<h3>2010-07-12 - version 0.4</h3>
 					<ul>

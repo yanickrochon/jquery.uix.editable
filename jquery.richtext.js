@@ -7,7 +7,7 @@
  *
  *
  * @author Yanick Rochon (yanic.rochon@gmail.com)
- * @version 0.4
+ * @version 0.5
  */
 
 (function($) {
@@ -15,178 +15,25 @@
 $.widget("ui.richtext", {
    // default options
    options: {
-      sandboxed: false,    // use an iframe? (true) or not? (false)
+      sandboxed: true,    // use an iframe? (true -- default) or not? (false)
       editorStyles: [],    // ignored if sandboxed = false
       toolbars: [
-		   {location:'top',name:'default',buttons:"bold,italic,underline,strikeThrough"},
-		   {location:'top',name:'status',align:'right',buttons:"viewSource"}
-		]      // false = no toolbar, [{...}] = toolbar specs array 
+      	"bold,italic,underline,strikeThrough",
+		   "viewSource"
+		]
    },
 
    _create: function() {
-      // determine whether we use .val() or .html() to get the value on this.element
-      this.isDOMelement = (-1 == "textarea".indexOf(this.element[0].tagName.toLowerCase()));
-
-      this._initEditor();
-      this._initToolbars();
-
-      // TODO : auto-update textarea (or this.element) with HTML content on change
-      //        bind keyup,keydown,mousedown,blur
-      // TODO : apply fixes for different browser implementation
-
+      this._toolbars = new Toolbars(this.element, this.options, (function(t) { return function() { return t._createUI(); }; })(this) );
+      this._editor = new Editor(this.element, this.options);
    },
 
-   _initEditor: function() {
-      this.elementHtml = $(this.options.sandboxed ? "<iframe/>" : "<div/>")
-         .addClass('ui-widget ui-widget-content')
-         .height(this.element.outerHeight())   // height() ?
-         .width(this.element.outerWidth());    // width() ?
-
-      this.element.wrap($('<div></div>').width(this.element.outerWidth() + 2).addClass('ui-richtext-wrapper')).after(this.elementHtml).hide();
-
-      if (this.options.sandboxed) {
-         var editor = this._editor = this.elementHtml[0].contentWindow.document;
-         this._editor.designMode = 'on';
-         this._editor.open();
-         this._editor.write(this._valueFromElement());
-         this._editor.close();
-
-         if (this.options.editorStyles) {
-            $.each(this.options.editorStyles, function(i,e) {
-               $('head', editor).append(
-                  $('<link/>')
-                     .attr('rel', 'stylesheet')
-                     .attr('type', 'text/css')
-                     .attr('href', e)
-               );
-            });
-         }
-
-      } else {
-	      this.elementHtml.attr('contenteditable', true)
-	         .css({'font-family': this.element.css('font-family')})
-	         .html(this._valueFromElement());
-	      this._editor = window.document;
-      }
-   },
-   
-   _initToolbars: function() {
-      if (!this.options.toolbars) {
-         return;
-      }
-      
-      var that = this;
-      var toolbars = $.each({
-         right:{insertion:'prepend'},
-         left:{insertion:'prepend'},
-         top:{insertion:'prepend'},
-         bottom:{insertion:'append'}
-      }, function(l,tbo) {
-         $.extend(tbo,{
-            buttonCount: 0,
-            element: null,
-         })
-      });
-      var availableTools = $.ui.richtext.Tools;
-      var lastButtonset = null;
-      var flushButtonset = function() {
-         $(lastButtonset).buttonset();
-         lastButtonset = null;
-      };
-      
-      $.each(this.options.toolbars, function(i,toolbarSpecs) {
-         var tbElement;
-         var tbLoc = toolbarSpecs.location || 'top';
-         var tbButtons = toolbarSpecs.buttons.split(',');
-         
-         if (toolbars[tbLoc]) {
-            if (!toolbars[tbLoc].element) {
-               toolbars[tbLoc].element = $('<div></div>')
-                  .addClass('ui-widget ui-widget-header ui-richtext-toolbar ui-richtext-toolbar-' + tbLoc.replace(/[^a-zA-Z0-9_-]/, ''))
-               ;
-            }
-            toolbars[tbLoc].buttonCount++;
-         } else {
-            toolbars[tbLoc] = {
-               buttonCount: 1,
-               insertion: null,
-               element: $(tbLoc)
-            };
-         }
-         tbElement = toolbars[tbLoc].element;
-         if (toolbarSpecs.align) {
-            tbElement.css('textAlign', toolbarSpecs.align);
-         }
-         
-         $.each(tbButtons, function(i,toolName) {
-            if ('|' == toolName) {
-               flushButtonset();
-            } else {
-               var toolBtnDef = availableTools[toolName].button;
-               var id = 'btn' + toolName + (new Date().getTime());
-               if (!lastButtonset) {
-                  lastButtonset = $('<span></span>');
-                  tbElement.append(lastButtonset);
-               }
-
-               var btn, requireLabel = false;
-               switch (toolBtnDef.type || 'button') {
-                  case 'checkbox':
-                  case 'radio':
-                     btn = $('<input type="' + toolBtnDef.type + '"></input>');
-                     requireLabel = true;
-                     break;
-                  case 'link':
-                     btn = $('<a href="#"></a>');
-                     break;
-                  case 'button':
-                  default:
-                     btn = $('<button></button>');
-               }
-               
-               lastButtonset.append(btn);
-               if (requireLabel) {
-                  btn.attr('id', id);
-                  lastButtonset.append($('<label for="' + id + '"></label>'));
-               }
-               
-               btn.button(availableTools[toolName].button.options)
-                  .click(function() {
-                     availableTools[toolName].command(that._createUI(), [requireLabel ? btn.attr('checked') : btn.val()]);
-                  })
-               ;
-               
-               if (!toolbarSpecs.buttons) {
-                  toolbarSpecs.buttons = {};
-               }
-               toolbarSpecs.buttons[toolName] = btn;
-            }
-         });
-         flushButtonset();
-      });
-      
-      var container = this.element.parent();  // wrapped container
-      $.each(toolbars, function(loc,toolbarSpecs) {
-         if (toolbarSpecs.buttonCount) {
-            if (null != toolbarSpecs.insertion) {
-               container[toolbarSpecs.insertion](toolbarSpecs.element);
-            }
-         } else {
-            toolbarSpecs.element = null;
-         }
-      });
-   },
-
-   _exec: function(cmd, args) {
-      if (this.options.sandboxed) {
-         this.elementHtml[0].contentWindow.focus();
-      } else {
-         this.elementHtml.focus();
-      }
-      this._editor.execCommand(cmd, false, args);
-      this._updateElement();
+	// proxy to editor exec function
+   exec: function(cmd, args) {
+      this._editor.exec(cmd, false, args);
 	},
 
+/*
    _getCurrentNode: function() {
       var node,selection;
       if (window.getSelection) { // FF3.6, Safari4, Chrome5 (DOM Standards)
@@ -203,78 +50,284 @@ $.widget("ui.richtext", {
          return (node.nodeName == "#text" ? node.parentNode : node);
       }
    },
+*/
 
-   _updateElement: function() {
-      this.element[this.isDOMelement ? 'html' : 'val'](this._valueFromHtmlArea());
-   },
-
-   _updateHtmlArea: function() {
-      if (this.options.sandboxed) {
-         this._editor.body.innerHTML = this._valueFromElement();
-      } else {
-         this.elementHtml.html(this._valueFromElement());
-      }
-    },
-
-   _valueFromElement: function() {
-      return this.element[this.isDOMelement ? 'html' : 'val']();
-   },
-
-   _valueFromHtmlArea: function() {
-      if (this.options.sandboxed) {
-         return this._editor.body.innerHTML;
-      } else {
-         return this.elementHtml.html();
-      }
-   },
-   
    _createUI: function() {
       return {
-         richtext: this
+      	srcElement: this.element,
+      	toolbars: this._toolbars,
+         editor: this._editor
       };
    },
 
    enable: function() {
       $.Widget.prototype.enable.apply(this, arguments);
-      if (this.options.sandboxed) {
-         this._editor.designMode = 'on';
-      } else {
-         this.elementHtml.attr('contenteditable', true);
-         this.elementHtml.focus();
-      }
+      this._editor.setActive(true);
    },
    disable: function() {
       $.Widget.prototype.disable.apply(this, arguments);
-      if (this.options.sandboxed) {
-         this._editor.designMode = 'off';
-      } else {
-         this.elementHtml.focus();
-         this.elementHtml.attr('contenteditable', false);
-      }
+      this._editor.setActive(false);
    },
    tools: function(tool) {
-      var args = Array.prototype.slice.call(arguments);
-      args.shift();
-
       if ($.ui.richtext.Tools[tool]) {
+		   var args = Array.prototype.slice.call(arguments);
+		   args.shift();
+
          $.ui.richtext.Tools[tool].command(this._createUI(), args);
       }
    },
-   value: function() {
-      return this._valueFromHtmlArea();
-   },
-   //length: function() {
-      //return this._someOtherValue();
-   //},
+
    destroy: function() {
       $.Widget.prototype.destroy.apply(this, arguments); // default destroy
       // now do other stuff particular to this widget
-      this._updateElement();
-      this.elementHtml.detach();
+      this._editor.dispose();
       this._editor = null;
       this.element.unwrap().show();
    }
 });
+
+
+/**
+ * Toolbars object
+ */
+var Toolbars = function(element, options, uiFn) {
+	this.srcElement = element;
+	this.options = options;
+	this._createUI = uiFn;
+	this.init();
+};
+
+var button_id_prefix = 'btnToolRTE_';
+var button_id = 0;  // button auto-generated ids
+
+$.extend(Toolbars.prototype, {
+
+	init: function() {
+		this.element = $('<div></div>').addClass('ui-richtext-toolbar');
+		
+		if (this.options.toolbars && this.options.toolbars.length) {
+			this.attach();
+			this.update();
+		}
+	},
+	
+	update: function() {
+		this.element.empty();
+		
+		var toolbar = $('<div></div>').addClass('ui-widget ui-widget-header ui-corner-top').css('padding','2px');
+		var tools = $.ui.richtext.Tools;
+		var _createUI = this._createUI;
+	
+		$.each(this.options.toolbars, function(i,e) {
+			var _buttonset = $('<span></span>'), btnCount = 0;
+			$.each(e.split(','), function(i,t) {
+				if (tools[t]) {
+					var button = tools[t].button;
+					var id = button_id_prefix + (button_id++);
+					var btn;
+					switch (button.type) {
+						case 'button':
+							btn = $('<button id="'+id+'"></button>').click(function() { tools[t].command(_createUI()); });
+							_buttonset.append(btn);
+							break;
+						case 'checkbox':
+							btn = $('<input id="'+id+'" type="checkbox" />').click(function() { tools[t].command(_createUI(), [$(this).attr('checked')]); });
+							_buttonset.append(btn).append($('<label for="'+id+'"></label>'));
+							break;
+					}
+					btn.button(button.options);
+					btnCount++;
+				}
+			});
+			if (btnCount) _buttonset.appendTo(toolbar).buttonset();
+		});
+		
+		this.element.append(toolbar);
+	},
+
+	hide: function() {
+		this.element.hide();
+	},
+	
+	show: function() {
+		this.element.show();
+	},
+	
+	attach: function() {
+		this.element.width(this.srcElement.outerWidth()).insertBefore(this.srcElement);
+	},
+	
+	detach: function() {
+		this.element.remove();
+	}
+
+});
+
+/**
+ * Editor object
+ */
+var Editor = function(element, options) {
+   // determine whether we use .val() or .html() to get the value on this.element
+   this.isDOMelement = (-1 == "textarea".indexOf(element[0].tagName.toLowerCase()));
+   this.srcElement = element;
+   this.options = options;
+
+	// add specialized functions
+ 	$.extend(this, this.options.sandboxed ? IFrameEditor : ElementEditor);
+   
+   this.init();
+   
+   this.element
+		   .addClass('ui-widget ui-widget-content')
+         .height(this.srcElement.outerHeight())   // height() ?
+         .width(this.srcElement.outerWidth());    // width() ?
+         
+   this.updateHtmlElement();
+};
+
+$.extend(Editor.prototype, {
+   
+   updateSrcElement: function() {
+      this.srcElement[this.isDOMelement ? 'html' : 'val'](this.valueFromEditorElement());
+   },
+
+   /**
+    * Return the value from the source element (textarea or DOMElement)
+    */
+   valueFromSrcElement: function() {
+		return this.srcElement[this.isDOMelement ? 'html' : 'val']();
+   },
+
+   dispose: function() {
+   	this.updateSrcElement();
+   	this.element.remove();
+   	delete this.element;
+   }
+
+});
+
+/**
+ * Sand boxed editor (use an iframe)
+ */
+var IFrameEditor = {
+
+   init: function() {
+      this.element = $("<iframe/>");
+
+	   this.srcElement.wrap($('<div></div>').width(this.srcElement.outerWidth() + 2).addClass('ui-richtext-wrapper')).after(this.element).hide();
+
+      this.contentWindow = this.element[0].contentWindow;
+      var _doc = this.contentWindow.document;
+      _doc.designMode = 'on';
+      //this._editor.open();
+      //this._editor.write(string);
+      //this._editor.close();
+
+      if (this.options.editorStyles) {
+         $.each(this.options.editorStyles, function(i,e) {
+            $('head', _doc).append(
+               $('<link/>')
+                  .attr('rel', 'stylesheet')
+                  .attr('type', 'text/css')
+                  .attr('href', e)
+            );
+         });
+      }
+   },
+
+   isActive: function() {
+      return this.contentWindow.document.designMode == 'on';
+   },
+
+	setActive: function(b) {
+      this.contentWindow.document.designMode = (b ? 'on' : 'off');
+      if (b) this.element.focus();
+	},
+
+   exec: function(cmd, args) {
+      this.contentWindow.focus();
+	   this.contentWindow.document.execCommand(cmd, false, args);
+      this.updateSrcElement();
+   },
+
+   updateHtmlElement: function() {
+		this.contentWindow.document.body.innerHTML = this.valueFromSrcElement();
+   },
+
+	/**
+	 * Return the value from the RTE area
+	 */
+   valueFromEditorElement: function() {
+      return this.contentWindow.document.body.innerHTML;
+   },
+   
+   value: function(html) {
+      var _doc = this.contentWindow.document;
+      if (html) {
+         _doc.body.innerHTML = html;
+      } else {
+         return _doc.body.innerHTML;
+      }
+      // if we have set something, we did not return yet, so update source element
+      this.updateSrcElement();
+   }
+
+};
+
+/**
+ * Inline editor (use a DOMElement)
+ */
+var ElementEditor = {
+
+   init: function() {
+      this.element = $("<div/>");
+
+	   this.srcElement.wrap($('<div></div>').width(this.srcElement.outerWidth() + 2).addClass('ui-richtext-wrapper')).after(this.element).hide();
+
+      this.element.attr('contenteditable', true)
+         .css({'font-family': this.srcElement.css('font-family')});
+      this.contentWindow = window;  // global window object
+   },
+
+   isActive: function() {
+      return this.element.attr('contenteditable');
+   },
+
+	setActive: function(b) {
+      this.element.focus();
+      this.element.attr('contenteditable', !!b);
+      if (b) this.element.focus();
+	},
+
+   exec: function(cmd, args) {
+      this.element.focus();
+	   this.contentWindow.document.execCommand(cmd, false, args);
+      this.updateSrcElement();
+   },
+
+   updateHtmlElement: function() {
+		this.element.html(this.valueFromSrcElement());
+   },
+
+	/**
+	 * Return the value from the RTE area
+	 */
+   valueFromEditorElement: function() {
+      return this.element.html();
+   },
+
+   value: function(html) {
+      if (html) {
+         this.element.html(html);
+      } else {
+         return this.element.html();
+      }
+      // if we have set something, we did not return yet, so update source element
+      this.updateSrcElement();
+   }
+
+};
+
 
 
 // any plugin may extend $.ui.richtext.Tools to add more tools, or override some
@@ -285,7 +338,7 @@ $.extend(true, $.ui.richtext, {
     * all functions receives two arguments: ui, args
     *   ui.richtext    the actual widget object with all private methods exposed
     *   ui.button      the tool button
-    *   
+    *
     */
    BaseTool: {
       button: null, // {[type: checkbox|radio|button,] options: {button options}}
@@ -293,16 +346,16 @@ $.extend(true, $.ui.richtext, {
       command: $.noop,
       update: $.noop
    },
-   
+
    // return an array of all available tools
    getAllTools: function() {
       var tools = [];
       $.each($.ui.richtext.Tools, function(tool, fn) { tools.push(tool); });
       return tools;
    },
-   
+
    Tools: {},
-   
+
    // expects an object as first argument
    registerTools: function(tools) {
       var rt = $.ui.richtext.Tools;
@@ -315,38 +368,40 @@ $.extend(true, $.ui.richtext, {
 
 $.ui.richtext.registerTools({
    bold: {
-      button: {type:'button', options: {label:'B'}},
-      command: function(ui) { ui.richtext._exec("bold"); },
+      button: {type:'checkbox', options: {label:'B'}},
+      command: function(ui) { ui.editor.exec("bold"); },
       update: function(ui) {  }
    },
    italic: {
-      button: {type:'button', options: {label:'I'}},
-      command: function(ui) { ui.richtext._exec("italic"); },
+      button: {type:'checkbox', options: {label:'I'}},
+      command: function(ui) { ui.editor.exec("italic"); },
       update: function(ui) {  }
    },
    underline: {
-      button: {type:'button', options: {label:'U'}},
-      command: function(ui) { ui.richtext._exec("underline"); },
+      button: {type:'checkbox', options: {label:'U'}},
+      command: function(ui) { ui.editor.exec("underline"); },
       update: function(ui) {  }
    },
    strikeThrough: {
-      button: {type:'button', options: {label:'S'}},
-      command: function(ui) { ui.richtext._exec("strikethrough"); },
+      button: {type:'checkbox', options: {label:'S'}},
+      command: function(ui) { ui.editor.exec("strikethrough"); },
       update: function(ui) {  }
    },
    viewSource: {
       button: {type:'checkbox', options: {label:'Source'}},
-      command: function(ui, args) { 
+      command: function(ui, args) {
          if (args.length && args[0]) {
-            ui.richtext._updateElement();
-            ui.richtext.elementHtml.hide(); 
-            ui.richtext.element.show(); 
+         	ui.toolbars.hide();
+            ui.editor.element.hide();
+            ui.srcElement.show();
          } else {
-            ui.richtext._updateHtmlArea();
-            ui.richtext.element.hide(); 
-            ui.richtext.elementHtml.show();
+            ui.editor.updateHtmlElement();
+            ui.srcElement.hide();
+            ui.editor.element.show();
+         	ui.toolbars.show();
          }
-      }
+      },
+      update: function(ui) {  }
    },
 })
 

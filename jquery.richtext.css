@@ -1,22 +1,7 @@
 
 
 .ui-richtext-toolbar {
-   padding: 2px;
+   padding-bottom: 2px;
 }
 
-.ui-richtext-toolbar-top {
-
-}
-
-.ui-richtext-toolbar-left {
-   float: left;
-}
-
-.ui-richtext-toolbar-right {
-   float: right;
-}
-
-.ui-richtext-toolbar-bottom {
-
-}
 
