@@ -21,7 +21,7 @@ $.widget("ui.richtext", {
 			"bold,italic,underline,strikeThrough",
 			"viewSource"
 		],
-		enter: function() { },
+		enter: function() { }
 	},
 
 	_create: function() {
@@ -63,6 +63,8 @@ $.widget("ui.richtext", {
 	destroy: function() {
 		$.Widget.prototype.destroy.apply(this, arguments); // default destroy
 		// now do other stuff particular to this widget
+		this._toolbars.detach();
+		this._toolbars = null;
 		this._editor.dispose();
 		this._editor = null;
 		this.element.unwrap().show();
@@ -240,7 +242,7 @@ var Editor = function(element, options, uiFn) {
  	// FIXME IE hack... document.body for iframe is still null
  	setTimeout(function() {        
 		that.updateHtmlElement();
-	}, 50);
+	}, 250);
 };
 
 $.extend(Editor.prototype, {
@@ -359,14 +361,15 @@ var IFrameEditor = {
 		//this._editor.open();
 		//this._editor.write(string);
 		//this._editor.close();
-		
-		// FIXME Mozilla hack... can't enter design mode until dom is ready.
-		setTimeout(function() {
-			var contentWindow = $(".ui-richtext-wrapper iframe")[0].contentWindow; 
+
+		var contentWindow = $(".ui-richtext-wrapper iframe")[0].contentWindow;
+		contentWindow.onload = function() {
 			contentWindow.document.designMode = "on";
-			contentWindow.document.execCommand("useCSS", false, true);
-		}, 100);
-		
+			if (!$.browser.msie) {
+				contentWindow.document.execCommand("useCSS", false, true);
+			}
+		}
+
 		if (this.options.editorStyles) {
 			$.each(this.options.editorStyles, function(i,e) {
 				$('head', _doc).append(
@@ -492,7 +495,7 @@ $.extend(true, $.ui.richtext, {
 	BaseTool: {
 		button: null,	// {[type: checkbox|radio|button,] options: {button options}}
 							// TODO : add 'select' special type where options is an hash of value:text of <OPTION> tags
-		command: $.noop,
+		command: $.noop
 		//update: $.noop   // optional method, ONLY implment the function if tools needs updates on editor changes
 		                   // signature = function(ui) where ui.currentNode is the node at caret position and
 		                   //                                ui.caretPosition is the caret position
@@ -600,7 +603,7 @@ $.ui.richtext.registerTools({
 				ui.toolbars.show();
 			}
 		}
-	},
+	}
 })
 
 })(jQuery);
