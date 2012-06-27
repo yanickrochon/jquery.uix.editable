@@ -20,7 +20,8 @@ $.widget("ui.richtext", {
 		toolbars: [
 			"bold,italic,underline,strikeThrough",
 			"viewSource"
-		]
+		],
+		enter: function() { }
 	},
 
 	_create: function() {
@@ -62,6 +63,8 @@ $.widget("ui.richtext", {
 	destroy: function() {
 		$.Widget.prototype.destroy.apply(this, arguments); // default destroy
 		// now do other stuff particular to this widget
+		this._toolbars.detach();
+		this._toolbars = null;
 		this._editor.dispose();
 		this._editor = null;
 		this.element.unwrap().show();
@@ -156,7 +159,7 @@ $.extend(Toolbars.prototype, {
 	},
 	
 	attach: function() {
-		this.element.width(this.srcElement.outerWidth()).insertBefore(this.srcElement);
+		this.element.width('100%' /*this.srcElement.outerWidth()*/).insertBefore(this.srcElement);
 	},
 	
 	detach: function() {
@@ -182,15 +185,64 @@ var Editor = function(element, options, uiFn) {
 	this.element
 			.addClass('ui-widget ui-widget-content')
 			.height(this.srcElement.outerHeight())   // height() ?
-			.width(this.srcElement.outerWidth());    // width() ?
+			.width('100%') /*.width(this.srcElement.outerWidth())*/;    // width() ?
 
 	var that = this;
+	var ranges = null;
 
-	$(this.contentWindow.document).bind('keyup mouseup', function() {
-		element.trigger('richtextcaretmoved', uiFn({caretPosition:that.getCursorPosition(), currentNode:$(that.getNodeAtCursor())}));
+	// This hack is mainly for IE9, which loses the current selection on change of focus
+	// (may only happen when editor is in iframe), so using the toolbar would reset the 
+	// position before applying the command.
+	if (window.getSelection) {
+	    // IE 9 and non-IE
+	    that.saveSelection = function(win) {
+	        var sel = win.getSelection();//, 
+	        ranges = [];
+	        if (sel.rangeCount) {
+	            for (var i = 0, len = sel.rangeCount; i < len; ++i) {
+	                ranges.push(sel.getRangeAt(i));
+	            }
+	        }
+	        return ranges;
+	    };
+
+	    that.restoreSelection = function(win) {
+	        var sel = win.getSelection();
+	        sel.removeAllRanges();
+	        for (var i = 0, len = ranges.length; i < len; ++i) {
+	            sel.addRange(ranges[i]);
+	        }
+	    };
+	} else if (document.selection && document.selection.createRange) {
+	    // IE <= 8
+	    that.saveSelection = function(win) {
+	        var sel = win.document.selection;
+	        ranges = (sel.type != "None") ? sel.createRange() : null;
+	    };
+
+	    that.restoreSelection = function(win) {
+	        if (ranges) {
+	            ranges.select();
+	        }
+	    };
+	}
+
+	$(this.contentWindow).bind('keydown', function(event) {
+		if (event.which == 13 && !event.shiftKey) {
+			return that.options.enter();
+		}
 	});
-         
-	this.updateHtmlElement();
+	
+	$(this.contentWindow).bind('keyup mouseup', function() {
+		element.trigger('richtextcaretmoved', uiFn({caretPosition:that.getCursorPosition(), currentNode:$(that.getNodeAtCursor())}));
+		// FIXME: Is there a better event we can catch (e.g. blur)?
+		that.saveSelection(that.contentWindow);
+	});
+ 
+ 	// FIXME IE hack... document.body for iframe is still null
+ 	setTimeout(function() {        
+		that.updateHtmlElement();
+	}, 250);
 };
 
 $.extend(Editor.prototype, {
@@ -301,7 +353,7 @@ var IFrameEditor = {
 	init: function() {
 		this.element = $("<iframe/>");
 
-		this.srcElement.wrap($('<div></div>').width(this.srcElement.outerWidth() + 2).addClass('ui-richtext-wrapper')).after(this.element).hide();
+		this.srcElement.wrap($('<div></div>').width('100%' /*this.srcElement.outerWidth() + 2*/).addClass('ui-richtext-wrapper')).after(this.element).hide();
 
 		this.contentWindow = this.element[0].contentWindow;
 		var _doc = this.contentWindow.document;
@@ -309,6 +361,14 @@ var IFrameEditor = {
 		//this._editor.open();
 		//this._editor.write(string);
 		//this._editor.close();
+
+		var contentWindow = $(".ui-richtext-wrapper iframe")[0].contentWindow;
+		contentWindow.onload = function() {
+			contentWindow.document.designMode = "on";
+			if (!$.browser.msie) {
+				contentWindow.document.execCommand("useCSS", false, true);
+			}
+		}
 
 		if (this.options.editorStyles) {
 			$.each(this.options.editorStyles, function(i,e) {
@@ -331,9 +391,13 @@ var IFrameEditor = {
 		if (b) this.element.focus();
 	},
 
-   exec: function(cmd, args) {
+    exec: function(cmd, args) {
 		this.contentWindow.focus();
-		this.contentWindow.document.execCommand(cmd, false, args);
+		this.restoreSelection(this.contentWindow);
+		if (cmd != 'none')
+			this.contentWindow.document.execCommand(cmd, false, args);
+		if (cmd == "selectAll")
+			this.saveSelection(this.contentWindow);			
 		this.updateSrcElement();
 	},
 
@@ -369,26 +433,27 @@ var ElementEditor = {
 	init: function() {
 		this.element = $("<div/>");
 
-		this.srcElement.wrap($('<div></div>').width(this.srcElement.outerWidth() + 2).addClass('ui-richtext-wrapper')).after(this.element).hide();
+		this.srcElement.wrap($('<div></div>').width('100%' /*this.srcElement.outerWidth() + 2*/).addClass('ui-richtext-wrapper')).after(this.element).hide();
 
-		this.element.attr('contenteditable', true)
+		this.element.attr('contentEditable', true)
 			.css({'font-family': this.srcElement.css('font-family')});
 		this.contentWindow = window;  // global window object
 	},
 
 	isActive: function() {
-		return this.element.attr('contenteditable');
+		return this.element.attr('contentEditable');
 	},
 
 	setActive: function(b) {
 		this.element.focus();
-		this.element.attr('contenteditable', !!b);
+		this.element.attr('contentEditable', !!b);
 		if (b) this.element.focus();
 	},
 
 	exec: function(cmd, args) {
 		this.element.focus();
-		this.contentWindow.document.execCommand(cmd, false, args);
+		if (cmd != 'none')
+			this.contentWindow.document.execCommand(cmd, false, args);
 		this.updateSrcElement();
 	},
 
@@ -430,7 +495,7 @@ $.extend(true, $.ui.richtext, {
 	BaseTool: {
 		button: null,	// {[type: checkbox|radio|button,] options: {button options}}
 							// TODO : add 'select' special type where options is an hash of value:text of <OPTION> tags
-		command: $.noop,
+		command: $.noop
 		//update: $.noop   // optional method, ONLY implment the function if tools needs updates on editor changes
 		                   // signature = function(ui) where ui.currentNode is the node at caret position and
 		                   //                                ui.caretPosition is the caret position
@@ -538,7 +603,7 @@ $.ui.richtext.registerTools({
 				ui.toolbars.show();
 			}
 		}
-	},
+	}
 })
 
 })(jQuery);
